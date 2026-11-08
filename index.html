@@ -355,6 +355,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
           <button data-view="elm">Elm Street</button>
           <button data-view="knoll">Grassy Knoll</button>
           <button data-view="tsbd">Book Depository</button>
+          <button data-view="zapruder">Zapruder POV</button>
           <span class="note">Survey-based model · Dealey Plaza, Dallas, TX · November 22, 1963</span>
         </div>
       </div>
@@ -536,7 +537,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.14</span>
+      <span>v1.18</span>
     </div>
   </div>
 </footer>
@@ -631,6 +632,10 @@ function initViewer(){
   renderer.toneMappingExposure=1.07;
   var scene=new THREE.Scene();
   scene.fog=new THREE.Fog(0xd7e3ee,1500,4200);
+  /* v1.15 look pass (11.22.63 study, checklist b3): warm aerial-perspective
+     haze - the plaza bowl stays clear at street range; only long views and
+     the skyline distance pick up the warm falloff. */
+  scene.fog.color.set(0xe9dcbe);scene.fog.near=1500;scene.fog.far=4000;
   var skyDome=new THREE.Mesh(new THREE.SphereGeometry(3600,24,12),new THREE.ShaderMaterial({
     side:THREE.BackSide,depthWrite:false,
     vertexShader:'varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
@@ -663,6 +668,74 @@ function initViewer(){
   var esun=new THREE.Mesh(new THREE.SphereGeometry(7,12,8),new THREE.MeshBasicMaterial({color:0xfff3da}));
   esun.position.set(14,26,34);envScene.add(esun);
   scene.environment=pmrem.fromScene(envScene,0.05).texture;
+  /* ================= v1.15 LOOK PASS (11.22.63 rendering study) =========
+     The show shot clean digital and built the period look in the grade;
+     this pass does the same to the live render. The scene is drawn once
+     into a render target whose texture carries sRGB encoding, so the
+     buffer holds exactly the image the direct render used to show (in
+     three r128 the ACES tone mapping and the output encoding are applied
+     per the render target's texture encoding too). A fullscreen shader
+     then adds, in order: subtle warm halation off the highlights, the
+     warm nostalgic grade (golden lift, gentle saturation), and - only
+     while the Zapruder POV camera is active - fine 8mm-style film grain.
+     renderer.render is wrapped; if anything in this setup fails, the
+     viewer simply keeps the original direct render. */
+  var lookU=null,setGrain=function(){};
+  try{
+    var lookRT=new THREE.WebGLRenderTarget(2,2,{depthBuffer:true,samples:4});
+    lookRT.texture.encoding=THREE.sRGBEncoding;
+    lookRT.texture.minFilter=THREE.LinearFilter;
+    lookRT.texture.generateMipmaps=false;
+    lookRT.samples=4;
+    lookU={tDiffuse:{value:lookRT.texture},uTime:{value:0},uGrain:{value:0},
+           uTexel:{value:new THREE.Vector2(0.5,0.5)}};
+    var lookMat=new THREE.ShaderMaterial({
+      uniforms:lookU,depthTest:false,depthWrite:false,
+      vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}',
+      fragmentShader:[
+        'uniform sampler2D tDiffuse;uniform float uTime;uniform float uGrain;uniform vec2 uTexel;',
+        'varying vec2 vUv;',
+        'vec3 tap(vec2 o){return texture2D(tDiffuse,vUv+o).rgb;}',
+        'void main(){',
+        ' vec3 c=tap(vec2(0.0));',
+        ' vec2 rad=uTexel*5.0;',
+        ' vec3 glow=(tap(rad*vec2(1.0,0.0))+tap(rad*vec2(-1.0,0.0))+tap(rad*vec2(0.0,1.0))+tap(rad*vec2(0.0,-1.0))',
+        '           +tap(rad*vec2(0.7,0.7))+tap(rad*vec2(-0.7,0.7))+tap(rad*vec2(0.7,-0.7))+tap(rad*vec2(-0.7,-0.7)))*0.125;',
+        ' vec3 hal=max(glow-vec3(0.80),vec3(0.0))*vec3(1.25,1.02,0.78)*0.85;',
+        ' c+=hal;',
+        ' float lum=dot(c,vec3(0.299,0.587,0.114));',
+        ' c=mix(vec3(lum),c,1.13);',
+        ' c=pow(max(c,vec3(0.0)),vec3(0.99,1.005,1.03));',
+        ' c*=vec3(1.05,1.01,0.95);',
+        ' c+=(1.0-c)*vec3(0.010,0.006,0.001);',
+        ' if(uGrain>0.0){',
+        '  float g=fract(sin(dot(gl_FragCoord.xy+mod(uTime,7.0)*371.0,vec2(12.9898,78.233)))*43758.5453);',
+        '  c+=(g-0.5)*0.10*uGrain*(0.35+0.65*(1.0-lum));',
+        ' }',
+        ' gl_FragColor=vec4(c,1.0);',
+        '}'
+      ].join('\n')
+    });
+    var lookMesh=new THREE.Mesh(new THREE.PlaneGeometry(2,2),lookMat);
+    lookMesh.frustumCulled=false;
+    var lookScene=new THREE.Scene();lookScene.add(lookMesh);
+    var lookCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+    var lookBusy=false,origRender=renderer.render;
+    var dbs=new THREE.Vector2();
+    renderer.render=function(sc,cam){
+      if(lookBusy||sc!==scene){origRender.call(renderer,sc,cam);return;}
+      lookBusy=true;
+      renderer.getDrawingBufferSize(dbs);
+      if(lookRT.width!==dbs.x||lookRT.height!==dbs.y){lookRT.setSize(dbs.x,dbs.y);lookU.uTexel.value.set(1/Math.max(1,dbs.x),1/Math.max(1,dbs.y));}
+      lookU.uTime.value=performance.now()/1000;
+      renderer.setRenderTarget(lookRT);
+      origRender.call(renderer,sc,cam);
+      renderer.setRenderTarget(null);
+      origRender.call(renderer,lookScene,lookCam);
+      lookBusy=false;
+    };
+    setGrain=function(on){if(lookU)lookU.uGrain.value=on?1:0;};
+  }catch(lookErr){lookU=null;setGrain=function(){};}
   function frame(pos,tgt){camera.position.set(pos[0],pos[1],pos[2]);controls.target.set(tgt[0],tgt[1],tgt[2]);controls.update();}
   var V3=function(x,y,z){return new THREE.Vector3(x,y,z);};
 
@@ -854,19 +927,7 @@ function initViewer(){
     facade('facade-records-north.jpg',127.7,100,[225.65,484.19,-33.9],Math.PI);
     facade('facade-courthouse-west.jpg',161.4,90,[135.6,480.74,330.2],-Math.PI/2);
     facade('facade-courthouse-north.jpg',208.8,90,[240.4,480.74,249.1],Math.PI);
-    /* HERTZ lettering on the Depository roof sign (the panel is in the model; the letters were not) */
-    (function(){
-      var cv=document.createElement('canvas');cv.width=1408;cv.height=416;
-      var cx=cv.getContext('2d');
-      cx.font='900 300px "Arial Black", Arial, sans-serif';
-      cx.textAlign='center';cx.textBaseline='middle';cx.fillStyle='#20211f';
-      var tw=cx.measureText('HERTZ').width;
-      var scx=Math.min(1.35,(1408*0.92)/Math.max(tw,1));
-      cx.save();cx.translate(704,212);cx.scale(scx,1);cx.fillText('HERTZ',0,0);cx.restore();
-      var tx=new THREE.CanvasTexture(cv);tx.encoding=THREE.sRGBEncoding;tx.anisotropy=8;
-      var m=new THREE.Mesh(new THREE.PlaneGeometry(22,6.5),new THREE.MeshStandardMaterial({map:tx,transparent:true,alphaTest:0.08,roughness:0.85,metalness:0,polygonOffset:true,polygonOffsetFactor:-1}));
-      m.position.set(-112.29,520.7,-65.66);m.rotation.y=-0.7;scene.add(m);
-    })();
+
     var box=new THREE.Box3().setFromObject(gltf.scene);
     var c=box.getCenter(new THREE.Vector3()),s=box.getSize(new THREE.Vector3());
     var r=Math.max(s.x,s.z);
@@ -877,6 +938,11 @@ function initViewer(){
       tsbd:function(){pausePlay();frame([c.x+s.x*0.30,c.y+26,c.z-s.z*0.30],[c.x-s.x*0.30,c.y+16,c.z+s.z*0.10]);}
     };
     window.__views.aerial();
+    /* v1.15: Zapruder pedestal POV (study checklist b5/b6) - the camera sits
+       at the documented Cam_Zapruder anchor on the pedestal, looking down
+       Elm to the frame-313 spot; it is the one camera in the viewer that
+       carries film grain. */
+    window.__views.zapruder=function(){pausePlay();frame([-280,437.0,118],[-191.4,427.5,209.9]);setGrain(true);};
     msg.textContent='Drag to orbit \u00B7 Scroll to zoom \u00B7 Press \u201CPlay the Event\u201D to watch the motorcade, or \u201CWalk the Plaza\u201D to stand in it.';
 
     /* ---- rig the limousine so it can drive ---- */
@@ -1048,7 +1114,53 @@ function initViewer(){
     });
   });
 
-  /* ---------- walk mode ---------- */
+    /* ---------- v1.15 cinematic frame + housekeeping ----------
+     "Cinematic frame" letterboxes Play the Event to the show's 2.00:1
+     presentation ratio (study checklist b2) with plain black bars over
+     the canvas; while a cinematic run is playing, page furniture that
+     would sit over the frame - the Professor helper button - is hidden
+     (b8, the subtraction principle). The transport panel and the step
+     list stay: they live below the frame. Film grain belongs to the
+     Zapruder camera alone, so Play, Walk and every other view preset
+     switch it off. */
+  var cineChk=document.createElement('input');cineChk.type='checkbox';cineChk.id='htmCine';
+  var cineLabel=document.createElement('label');
+  cineLabel.style.cssText='display:flex;gap:6px;align-items:center;font-size:14px;cursor:pointer;';
+  cineLabel.appendChild(cineChk);
+  cineLabel.appendChild(document.createTextNode(' Cinematic frame (2.00:1)'));
+  ui.querySelector('#htmFollow').parentNode.parentNode.appendChild(cineLabel);
+  var shell=canvas.parentElement;
+  if(shell&&window.getComputedStyle(shell).position==='static')shell.style.position='relative';
+  var bars=[];
+  for(var bi=0;bi<4;bi++){var bd=document.createElement('div');bd.style.cssText='position:absolute;background:#000;z-index:6;pointer-events:none;display:none;';shell.appendChild(bd);bars.push(bd);}
+  var profBtnEl=document.getElementById('profBtn');
+  var cineWasActive=false;
+  function cineSync(){
+    var active=!!(cineChk.checked&&playing);
+    if(active){
+      var cw=canvas.clientWidth,ch=canvas.clientHeight,cl=canvas.offsetLeft,ct=canvas.offsetTop;
+      var fw=cw,fh=cw/2;if(fh>ch){fh=ch;fw=ch*2;}
+      var sx=cl+(cw-fw)/2,sy=ct+(ch-fh)/2;
+      var setBar=function(el,x,y,w,h){el.style.display=(w>0.5&&h>0.5)?'block':'none';el.style.left=x+'px';el.style.top=y+'px';el.style.width=w+'px';el.style.height=h+'px';};
+      setBar(bars[0],cl,ct,cw,sy-ct);
+      setBar(bars[1],cl,sy+fh,cw,ct+ch-(sy+fh));
+      setBar(bars[2],cl,ct,sx-cl,ch);
+      setBar(bars[3],sx+fw,ct,cl+cw-(sx+fw),ch);
+    }else if(cineWasActive){
+      bars.forEach(function(b){b.style.display='none';});
+    }
+    if(profBtnEl)profBtnEl.style.display=active?'none':'';
+    cineWasActive=active;
+    requestAnimationFrame(cineSync);
+  }
+  requestAnimationFrame(cineSync);
+  document.querySelectorAll('[data-view]').forEach(function(b){
+    if(b.getAttribute('data-view')!=='zapruder')b.addEventListener('click',function(){setGrain(false);});
+  });
+  playBtn.addEventListener('click',function(){setGrain(false);});
+  walkBtn.addEventListener('click',function(){setGrain(false);});
+
+/* ---------- walk mode ---------- */
   var keys={},yaw=2.4,pitch=-0.05,dragging=false,px=0,py=0,walkPos=null,lastGroundCheck=0;
   walkBtn.addEventListener('click',function(){
     if(!modelRoot)return;
