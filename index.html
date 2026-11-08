@@ -536,7 +536,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.00</span>
+      <span>v1.01</span>
     </div>
   </div>
 </footer>
@@ -621,44 +621,335 @@ document.querySelectorAll('.qbtns button').forEach(function(b){
 });
 function initViewer(){
   var msg=document.getElementById('viewerMsg'),canvas=document.getElementById('viewer');
-  if(typeof THREE==='undefined'||!THREE.GLTFLoader){msg.style.display='block';msg.textContent='The 3D viewer library could not load. Please check your connection and reload the page.';return;}
-  msg.style.display='block';msg.textContent='Loading the Dealey Plaza model… (first visit may take a moment)';
+  if(!window.THREE||!THREE.GLTFLoader){msg.textContent='The 3D libraries could not be loaded. Please check your connection and reload the page.';return;}
   var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-  var scene=new THREE.Scene();scene.background=new THREE.Color(0x0B0D14);
-  scene.fog=new THREE.Fog(0x0B0D14,600,1800);
-  var camera=new THREE.PerspectiveCamera(50,2,0.1,4000);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  var scene=new THREE.Scene();scene.background=new THREE.Color(0x9fc3e0);
+  scene.fog=new THREE.Fog(0x9fc3e0,1100,2800);
+  var camera=new THREE.PerspectiveCamera(50,2,0.1,5000);
   var controls=new THREE.OrbitControls(camera,canvas);
-  controls.enableDamping=true;controls.maxPolarAngle=Math.PI*0.495;
-  scene.add(new THREE.HemisphereLight(0xcfe8ff,0x2a2419,0.95));
-  var sun=new THREE.DirectionalLight(0xfff2d8,1.1);sun.position.set(180,260,120);scene.add(sun);
+  controls.enableDamping=true;controls.dampingFactor=0.08;controls.maxPolarAngle=Math.PI*0.495;
+  var amb=new THREE.AmbientLight(0xffffff,0.55);scene.add(amb);
+  var sun=new THREE.DirectionalLight(0xfff2d8,1.15);sun.position.set(180,260,120);scene.add(sun);
   function frame(pos,tgt){camera.position.set(pos[0],pos[1],pos[2]);controls.target.set(tgt[0],tgt[1],tgt[2]);controls.update();}
+  var V3=function(x,y,z){return new THREE.Vector3(x,y,z);};
+
+  /* ---------- people ---------- */
+  function makeLabel(text){
+    var cv=document.createElement('canvas');cv.width=512;cv.height=96;
+    var cx=cv.getContext('2d');
+    cx.fillStyle='rgba(10,12,20,0.78)';
+    cx.beginPath();
+    if(cx.roundRect){cx.roundRect(6,14,500,68,18);}else{cx.rect(6,14,500,68);}
+    cx.fill();
+    cx.font='600 34px Nunito, Arial, sans-serif';cx.textAlign='center';cx.textBaseline='middle';
+    cx.fillStyle='#D4AF37';cx.fillText(text,256,50);
+    var tx=new THREE.CanvasTexture(cv);tx.encoding=THREE.sRGBEncoding;
+    var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,depthTest:false,transparent:true}));
+    sp.scale.set(15,2.8,1);sp.renderOrder=99;
+    return sp;
+  }
+  function makeFigure(o){
+    var g=new THREE.Group();
+    var suit=new THREE.MeshLambertMaterial({color:o.suit});
+    var skin=new THREE.MeshLambertMaterial({color:o.skin||0xd9a184});
+    var dark=new THREE.MeshLambertMaterial({color:0x1c1a18});
+    var H=o.small?3.4:(o.seated?4.4:5.7);
+    if(o.seated){
+      var seat=new THREE.Mesh(new THREE.BoxGeometry(1.5,0.5,1.1),dark);seat.position.y=0.25;g.add(seat);
+      var torso=new THREE.Mesh(new THREE.CylinderGeometry(0.52,0.66,1.9,10),suit);torso.position.y=1.45;g.add(torso);
+      var head=new THREE.Mesh(new THREE.SphereGeometry(0.52,14,12),skin);head.position.y=2.85;g.add(head);
+      if(o.hat!==undefined){var hat=new THREE.Mesh(new THREE.CylinderGeometry(0.56,0.58,0.28,14),new THREE.MeshLambertMaterial({color:o.hat}));hat.position.y=3.28;g.add(hat);}
+    }else{
+      var legs=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.9,0.62),dark);legs.position.y=0.95;g.add(legs);
+      var torso2=new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.72,2.1,10),suit);torso2.position.y=2.95;g.add(torso2);
+      var head2=new THREE.Mesh(new THREE.SphereGeometry(0.54,14,12),skin);head2.position.y=4.5;g.add(head2);
+      if(o.hat!==undefined){var hat2=new THREE.Mesh(new THREE.CylinderGeometry(0.58,0.6,0.3,14),new THREE.MeshLambertMaterial({color:o.hat}));hat2.position.y=4.95;g.add(hat2);}
+      if(o.umbrella){
+        var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,3.4,6),dark);pole.position.set(0.9,5.2,0);g.add(pole);
+        var can=new THREE.Mesh(new THREE.ConeGeometry(2.3,0.7,14),new THREE.MeshLambertMaterial({color:0x111114}));can.position.set(0.9,6.9,0);g.add(can);
+      }
+    }
+    if(o.label){var lb=makeLabel(o.label);lb.position.y=H+1.6;g.add(lb);}
+    return g;
+  }
+
+  /* ---------- route steps (every step carries its date and time) ---------- */
+  var DAY='Friday, November 22, 1963';
+  var STEPS=[
+    {xz:[30,-300], time:'12:29 PM CST', title:'Onto Houston Street',
+     text:'The motorcade turns off Main Street onto Houston, beginning the final leg through Dealey Plaza toward the Trade Mart luncheon.'},
+    {xz:[2,2], time:'12:29 PM CST', title:'The Left onto Elm',
+     text:'A sharp left onto Elm Street, directly in front of the Texas School Book Depository at 411 Elm.'},
+    {xz:[-111.7,100.5], time:'12:30 PM CST', title:'The First Shot',
+     text:'As the limousine descends Elm below the Depository\u2019s southeast corner (Zapruder frame ~161), the first shot rings out. The President is still waving.'},
+    {xz:[-147.7,146.1], time:'12:30 PM CST', title:'Behind the Stemmons Sign',
+     text:'Hidden behind the Stemmons Freeway sign (frames 207\u2013224), both men are struck \u2014 the moment the Warren Commission assigned to a single bullet (frame ~223).'},
+    {xz:[-191.4,209.9], time:'12:30 PM CST', title:'Frame 313 \u2014 The Fatal Shot',
+     text:'Frame 313 of the Zapruder film: the fatal head shot. The limousine is 265 feet from the sixth-floor window.'},
+    {xz:[-245,242], time:'12:30 PM CST', title:'Clint Hill\u2019s Run',
+     text:'Secret Service agent Clint Hill sprints from the follow-up car, climbs onto the limousine\u2019s rear and shields the occupants as Mrs. Kennedy is guided back into the seat.'},
+    {xz:[-830,400], time:'12:31 PM CST', title:'The Triple Underpass',
+     text:'The limousine accelerates through the triple underpass onto Stemmons Freeway, racing for Parkland Memorial Hospital.'},
+    {xz:[-1005,420], time:'\u2248 12:38 PM CST', title:'Parkland Memorial Hospital',
+     text:'The presidential party reaches Parkland (contemporary records differ, 12:35\u201312:40). The President is pronounced dead at 1:00 PM CST.'}
+  ];
+
+  /* ---------- UI (built here so it always matches the viewer) ---------- */
+  var ui=document.createElement('div');
+  ui.style.cssText='margin:14px 0 6px;padding:12px 14px;background:#141721;border:1px solid #D4AF37;border-radius:12px;color:#EDEFF5;font-family:Nunito,Arial,sans-serif;';
+  ui.innerHTML=
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">'+
+    '<button id="htmPlay" style="background:#D4AF37;color:#141721;border:0;border-radius:8px;padding:9px 18px;font-weight:800;cursor:pointer;font-size:15px;">&#9654; Play the Event</button>'+
+    '<button id="htmRestart" style="background:#232838;color:#EDEFF5;border:1px solid #3a405c;border-radius:8px;padding:9px 13px;cursor:pointer;">&#8634; Restart</button>'+
+    '<button id="htmWalk" style="background:#232838;color:#EDEFF5;border:1px solid #3a405c;border-radius:8px;padding:9px 13px;cursor:pointer;">&#128694; Walk the Plaza</button>'+
+    '<label style="display:flex;gap:6px;align-items:center;font-size:14px;cursor:pointer;"><input type="checkbox" id="htmFollow" checked> Follow camera</label>'+
+    '<span id="htmClock" style="margin-left:auto;font-weight:800;color:#00E5FF;font-size:15px;"></span>'+
+    '</div>'+
+    '<input id="htmScrub" type="range" min="0" max="1000" value="0" style="width:100%;margin:10px 0 4px;accent-color:#D4AF37;">'+
+    '<div id="htmCaption" style="min-height:44px;font-size:14.5px;line-height:1.45;"></div>'+
+    '<div id="htmWalkHelp" style="display:none;font-size:13.5px;color:#B5BACC;">Walk mode: click-drag to look around &middot; <b>W A S D</b> or arrow keys to walk &middot; Shift = faster &middot; press Walk the Plaza again to exit.</div>';
+  canvas.parentElement.appendChild(ui);
+  var stepsBox=document.createElement('div');
+  stepsBox.style.cssText='margin:8px 0 18px;padding:6px 14px;background:#0e1016;border:1px solid #2a2f45;border-radius:12px;color:#EDEFF5;font-family:Nunito,Arial,sans-serif;';
+  var sh='<div style="font-weight:800;color:#D4AF37;padding:8px 0 2px;">The Motorcade Route \u2014 Step by Step</div>';
+  STEPS.forEach(function(s,i){
+    sh+='<div class="htmStep" data-step="'+i+'" style="padding:7px 8px;border-top:1px solid #232838;cursor:pointer;border-radius:6px;">'+
+        '<b style="color:#00E5FF;">'+DAY+' \u2014 '+s.time+'</b> &nbsp;<b>'+s.title+'</b>'+
+        '<div style="color:#B5BACC;font-size:13.5px;">'+s.text+'</div></div>';
+  });
+  stepsBox.innerHTML=sh;
+  ui.parentElement.appendChild(stepsBox);
+
+  var playBtn=ui.querySelector('#htmPlay'),scrub=ui.querySelector('#htmScrub'),
+      caption=ui.querySelector('#htmCaption'),clockEl=ui.querySelector('#htmClock'),
+      followChk=ui.querySelector('#htmFollow'),walkBtn=ui.querySelector('#htmWalk'),
+      walkHelp=ui.querySelector('#htmWalkHelp');
+
+  var ray=new THREE.Raycaster(),DOWN=V3(0,-1,0);
+  var modelRoot=null,groundCache={};
+  function groundY(x,z){
+    var key=Math.round(x/4)+','+Math.round(z/4);
+    if(groundCache[key]!==undefined)return groundCache[key];
+    ray.set(V3(x,580,z),DOWN);
+    var hits=ray.intersectObject(modelRoot,true);
+    var y=hits.length?hits[0].point.y:421.7;
+    groundCache[key]=y;return y;
+  }
+
+  var curve=null,pathPts=[],stepU=[],homeU=0.62,limoGroup=null,limoC0=null,head0=0;
+  var playing=false,uCur=0,walkMode=false,lastT=0;
+  var TOTAL=85000; // ms for the full run at 1x
+  function speedAt(u){
+    if(stepU.length<5)return 1;
+    if(u>stepU[2]&&u<stepU[4])return 0.42;      // slow through the shooting sequence
+    if(u>=stepU[4])return 1.7;                   // the race to Parkland
+    return 1;
+  }
+  function nearestU(x,z){
+    var best=0,bd=1e18;
+    for(var i=0;i<pathPts.length;i++){var dx=pathPts[i].x-x,dz=pathPts[i].z-z,d=dx*dx+dz*dz;if(d<bd){bd=d;best=i;}}
+    return best/(pathPts.length-1);
+  }
+  function stepFor(u){
+    var idx=0;for(var i=0;i<stepU.length;i++){if(u>=stepU[i]-0.001)idx=i;}
+    return idx;
+  }
+  function showStep(i){
+    var s=STEPS[i];
+    caption.innerHTML='<b style="color:#D4AF37;">'+DAY+' \u2014 '+s.time+'</b> &middot; <b>'+s.title+'</b><br>'+s.text;
+    clockEl.textContent=s.time;
+    stepsBox.querySelectorAll('.htmStep').forEach(function(el,j){el.style.background=(j===i)?'#1d2338':'transparent';});
+  }
+  function pausePlay(){playing=false;playBtn.innerHTML='&#9654; Play the Event';}
+  function setPose(u){
+    if(!curve||!limoGroup)return;
+    var p=curve.getPointAt(u),t=curve.getTangentAt(u);
+    limoGroup.position.set(p.x,p.y,p.z);
+    limoGroup.rotation.set(0,Math.atan2(t.x,t.z)-head0,0);
+    if(followChk.checked&&playing&&!walkMode){
+      var bx=-t.x,bz=-t.z,sx=t.z,sz=-t.x;
+      camera.position.lerp(V3(p.x+bx*34+sx*13,p.y+13,p.z+bz*34+sz*13),0.06);
+      controls.target.lerp(V3(p.x,p.y+3,p.z),0.12);
+    }
+    scrub.value=Math.round(u*1000);
+    showStep(stepFor(u));
+  }
+
   new THREE.GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load('model.gltf',function(gltf){
-    scene.add(gltf.scene);
+    modelRoot=gltf.scene;scene.add(gltf.scene);
     var box=new THREE.Box3().setFromObject(gltf.scene);
     var c=box.getCenter(new THREE.Vector3()),s=box.getSize(new THREE.Vector3());
     var r=Math.max(s.x,s.z);
-    frame([c.x+r*0.55,c.y+r*0.62,c.z+r*0.55],[c.x,c.y,c.z]);
-    msg.style.display='none';
     window.__views={
-      aerial:function(){frame([c.x,c.y+r*1.05,c.z+r*0.28],[c.x,c.y,c.z]);},
-      elm:function(){frame([c.x-s.x*0.34,c.y+s.y*0.6+8,c.z+s.z*0.30],[c.x,c.y+4,c.z]);},
-      knoll:function(){frame([c.x-s.x*0.10,c.y+10,c.z+s.z*0.30],[c.x-s.x*0.25,c.y+4,c.z-s.z*0.05]);},
-      tsbd:function(){frame([c.x+s.x*0.30,c.y+26,c.z-s.z*0.30],[c.x-s.x*0.30,c.y+16,c.z+s.z*0.10]);}
+      aerial:function(){pausePlay();frame([c.x,c.y+r*1.05,c.z+r*0.28],[c.x,c.y,c.z]);},
+      elm:function(){pausePlay();frame([c.x-s.x*0.34,c.y+s.y*0.6+8,c.z+s.z*0.30],[c.x,c.y+4,c.z]);},
+      knoll:function(){pausePlay();frame([c.x-s.x*0.10,c.y+10,c.z+s.z*0.30],[c.x-s.x*0.25,c.y+4,c.z-s.z*0.05]);},
+      tsbd:function(){pausePlay();frame([c.x+s.x*0.30,c.y+26,c.z-s.z*0.30],[c.x-s.x*0.30,c.y+16,c.z+s.z*0.10]);}
     };
-  },function(xhr){if(xhr.total)msg.textContent='Loading the Dealey Plaza model… '+Math.round(xhr.loaded/xhr.total*100)+'%';},
+    window.__views.aerial();
+    msg.textContent='Drag to orbit \u00B7 Scroll to zoom \u00B7 Press \u201CPlay the Event\u201D to watch the motorcade, or \u201CWalk the Plaza\u201D to stand in it.';
+
+    /* ---- rig the limousine so it can drive ---- */
+    var parts=[];
+    gltf.scene.traverse(function(o){if(o.name&&o.name.indexOf('Limo_')===0)parts.push(o);});
+    var lb=new THREE.Box3();
+    parts.forEach(function(p){lb.union(new THREE.Box3().setFromObject(p));});
+    limoC0=lb.getCenter(new THREE.Vector3());
+    limoGroup=new THREE.Group();limoGroup.position.copy(limoC0);scene.add(limoGroup);
+    parts.forEach(function(p){
+      var pc=new THREE.Box3().setFromObject(p).getCenter(new THREE.Vector3());
+      p.geometry=p.geometry.clone();p.geometry.translate(-pc.x,-pc.y,-pc.z);
+      p.position.copy(pc).sub(limoC0);
+      limoGroup.add(p);
+    });
+    /* the limousine's rest heading, from the frame-225 -> frame-313 anchors */
+    var f=V3(-191.4-(-147.7),0,209.9-146.1);f.normalize();
+    head0=Math.atan2(f.x,f.z);
+    var right=new THREE.Vector3().crossVectors(f,V3(0,1,0)); // car's right-hand side
+    function rider(off,label,suit,hat){
+      var fig=makeFigure({seated:true,suit:suit,hat:hat,label:label});
+      var pos=limoC0.clone().addScaledVector(f,off[0]).addScaledVector(right,off[1]);
+      fig.position.copy(pos).sub(limoC0);fig.position.y=1.1;
+      fig.rotation.y=head0;
+      limoGroup.add(fig);
+    }
+    rider([-3.4, 1.7],'President Kennedy',0x232c46);
+    rider([-3.4,-1.7],'Jacqueline Kennedy',0xd77f9e,0xd77f9e);
+    rider([ 0.6, 1.6],'Gov. Connally',0x2a2a30);
+    rider([ 0.6,-1.6],'Nellie Connally',0xa52a30);
+    rider([ 6.2,-1.7],'Agent Greer (driver)',0x3a3f4a);
+    rider([ 6.2, 1.7],'Agent Kellerman',0x3a3f4a);
+
+    /* ---- the route ---- */
+    var wp=[[30,-300],[16,-160],[6,-40],[2,2],[-45,38],[-111.7,100.5],[-129.5,121.9],[-147.7,146.1],[-165,175],[-191.4,209.9],[-245,242],[-330,275],[-470,320],[-640,365],[-830,400],[-1005,420]];
+    var pts3=wp.map(function(w){return V3(w[0],0,w[1]);});
+    var tmpCurve=new THREE.CatmullRomCurve3(pts3,false,'centripetal',0.5);
+    var lift=limoC0.y-groundY(limoC0.x,limoC0.z);
+    for(var i=0;i<wp.length;i++){var sp=tmpCurve.getPoint(i/(wp.length-1));pts3[i].y=groundY(sp.x,sp.z)+lift;}
+    curve=new THREE.CatmullRomCurve3(pts3,false,'centripetal',0.5);
+    pathPts=curve.getSpacedPoints(600);
+    stepU=STEPS.map(function(s){return nearestU(s.xz[0],s.xz[1]);});
+    homeU=stepU[4];
+
+    /* ---- the people of Dealey Plaza, at their documented places ---- */
+    function stand(x,z,label,suit,opts){
+      opts=opts||{};
+      var fig=makeFigure({suit:suit,hat:opts.hat,umbrella:opts.umbrella,label:label,small:opts.small});
+      var y=(opts.y!==undefined)?opts.y:groundY(x,z);
+      fig.position.set(x,y,z);
+      fig.rotation.y=opts.face||0;
+      scene.add(fig);return fig;
+    }
+    stand(-280,118,'Abraham Zapruder',0x4a4f5e,{hat:0x2e2a26});
+    stand(-276.2,123.5,'Marilyn Sitzman',0x8c3038);
+    stand(-178,226,'Mary Moorman',0x35507a,{hat:0x22242c});
+    stand(-138,188,'The "Babushka Lady"',0x9a7b4f);
+    stand(-166,166,'"Umbrella Man"',0x1f2126,{umbrella:true});
+    stand(-152,238,'Charles Brehm',0x5a5148);
+    stand(-149.5,241,'',0x707a8c,{small:true});
+    stand(-213,192,'Bill Newman',0x3d4b63);
+    stand(-209,196.5,'Gayle Newman',0x74584e);
+    stand(-206.5,193,'',0x8892a2,{small:true});
+    stand(-216.5,197,'',0x98a2b2,{small:true});
+    stand(18,-28,'Howard Brennan',0x6b5a43,{hat:0x3a332a});
+    var osw=makeFigure({suit:0x2c2c30,label:'Sixth floor \u2014 L. H. Oswald*'});
+    osw.position.set(-66.2,490.2,-13.4);osw.rotation.y=2.6;scene.add(osw);
+    /* crowds along both curbs of Elm */
+    var crowdCols=[0x707880,0x8a6f55,0x4c5a6e,0x7a4a42,0x5d6650,0x989aa2,0x64503e,0x3e4a5a];
+    for(var k=0;k<14;k++){
+      var uu=0.30+k*0.024,p=curve.getPointAt(uu),t=curve.getTangentAt(uu);
+      var side=(k%2===0)?1:-1,off=15+(k%3)*3;
+      var nx=t.z*side,nz=-t.x*side;
+      stand(p.x+nx*off,p.z+nz*off,'',crowdCols[k%crowdCols.length],{face:Math.atan2(-nx,-nz)});
+    }
+
+    uCur=homeU;setPose(uCur);
+    caption.innerHTML='<b style="color:#D4AF37;">'+DAY+'</b> &middot; The limousine waits at frame 313, with the people of the plaza in place. Press <b>Play the Event</b> to run the full motorcade from Houston Street to Parkland, or pick any step below. <span style="color:#B5BACC;">*Placements follow the Warren Commission account; the Kennedy page weighs the disputes.</span>';
+    clockEl.textContent='12:30 PM CST';
+  },function(xhr){if(xhr.total)msg.textContent='Loading the Dealey Plaza model\u2026 '+Math.round(xhr.loaded/xhr.total*100)+'%';},
   function(){msg.textContent='The model file could not be loaded. Please reload the page to try again.';});
+
+  /* ---------- transport controls ---------- */
+  playBtn.addEventListener('click',function(){
+    if(!curve)return;
+    if(playing){pausePlay();return;}
+    if(uCur>=0.999)uCur=0;
+    playing=true;playBtn.innerHTML='&#10073;&#10073; Pause';
+  });
+  ui.querySelector('#htmRestart').addEventListener('click',function(){if(!curve)return;uCur=0;setPose(0);playing=true;playBtn.innerHTML='&#10073;&#10073; Pause';});
+  scrub.addEventListener('input',function(){if(!curve)return;pausePlay();uCur=scrub.value/1000;setPose(uCur);});
+  stepsBox.querySelectorAll('.htmStep').forEach(function(el){
+    el.addEventListener('click',function(){
+      if(!curve)return;
+      var i=parseInt(el.getAttribute('data-step'),10);
+      uCur=stepU[i];setPose(uCur);
+      playing=true;playBtn.innerHTML='&#10073;&#10073; Pause';
+    });
+  });
+
+  /* ---------- walk mode ---------- */
+  var keys={},yaw=2.4,pitch=-0.05,dragging=false,px=0,py=0,walkPos=null,lastGroundCheck=0;
+  walkBtn.addEventListener('click',function(){
+    if(!modelRoot)return;
+    walkMode=!walkMode;
+    walkHelp.style.display=walkMode?'block':'none';
+    walkBtn.style.background=walkMode?'#D4AF37':'#232838';
+    walkBtn.style.color=walkMode?'#141721':'#EDEFF5';
+    controls.enabled=!walkMode;
+    if(walkMode){
+      pausePlay();
+      if(!walkPos)walkPos=V3(-252,0,150);
+      walkPos.y=groundY(walkPos.x,walkPos.z)+5.6;
+      camera.position.copy(walkPos);
+    }else{
+      controls.target.copy(camera.position).add(V3(Math.sin(yaw)*20,0,Math.cos(yaw)*20));
+    }
+  });
+  canvas.addEventListener('pointerdown',function(e){if(walkMode){dragging=true;px=e.clientX;py=e.clientY;}});
+  window.addEventListener('pointerup',function(){dragging=false;});
+  window.addEventListener('pointermove',function(e){
+    if(!walkMode||!dragging)return;
+    yaw-=(e.clientX-px)*0.0035;pitch-=(e.clientY-py)*0.0035;
+    pitch=Math.max(-1.2,Math.min(1.2,pitch));px=e.clientX;py=e.clientY;
+  });
+  window.addEventListener('keydown',function(e){keys[e.key.toLowerCase()]=true;});
+  window.addEventListener('keyup',function(e){keys[e.key.toLowerCase()]=false;});
+
   function resize(){
     var w=canvas.clientWidth,h=canvas.clientHeight;
-    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+    if(canvas.width!==w||canvas.height!==h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
   }
-  resize();
-  (function loop(){requestAnimationFrame(loop);controls.update();renderer.render(scene,camera);})();
-  window.addEventListener('resize',resize);
+  (function loop(){
+    requestAnimationFrame(loop);
+    var now=performance.now(),dt=Math.min(50,now-(lastT||now));lastT=now;
+    if(playing&&curve){
+      uCur+=(dt/TOTAL)*speedAt(uCur);
+      if(uCur>=1){uCur=1;pausePlay();setPose(uCur);caption.innerHTML+='<br><b style="color:#D4AF37;">End of the run.</b> 1:00 PM CST \u2014 the President is pronounced dead at Parkland.';}
+      else setPose(uCur);
+    }
+    if(walkMode&&walkPos){
+      var sp=(keys['shift']?30:13)*dt/1000;
+      var fx=Math.sin(yaw),fz=Math.cos(yaw),rx=fz,rz=-fx;
+      if(keys['w']||keys['arrowup']){walkPos.x+=fx*sp;walkPos.z+=fz*sp;}
+      if(keys['s']||keys['arrowdown']){walkPos.x-=fx*sp;walkPos.z-=fz*sp;}
+      if(keys['a']||keys['arrowleft']){walkPos.x-=rx*sp;walkPos.z-=rz*sp;}
+      if(keys['d']||keys['arrowright']){walkPos.x+=rx*sp;walkPos.z+=rz*sp;}
+      if(now-lastGroundCheck>120){walkPos.y=groundY(walkPos.x,walkPos.z)+5.6;lastGroundCheck=now;}
+      camera.position.lerp(V3(walkPos.x,walkPos.y,walkPos.z),0.5);
+      camera.lookAt(V3(walkPos.x+fx*20,walkPos.y+Math.tan(pitch)*20,walkPos.z+fz*20));
+    }else{
+      controls.update();
+    }
+    resize();
+    renderer.render(scene,camera);
+  })();
   document.querySelectorAll('[data-view]').forEach(function(b){
     b.addEventListener('click',function(){if(window.__views)window.__views[b.getAttribute('data-view')]();});
   });
 }
+
 show();
 })();
 </script>
