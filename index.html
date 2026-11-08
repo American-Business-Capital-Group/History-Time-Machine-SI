@@ -536,7 +536,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.06</span>
+      <span>v1.14</span>
     </div>
   </div>
 </footer>
@@ -739,6 +739,7 @@ function initViewer(){
     '<button id="htmRestart" style="background:#232838;color:#EDEFF5;border:1px solid #3a405c;border-radius:8px;padding:9px 13px;cursor:pointer;">&#8634; Restart</button>'+
     '<button id="htmWalk" style="background:#232838;color:#EDEFF5;border:1px solid #3a405c;border-radius:8px;padding:9px 13px;cursor:pointer;">&#128694; Walk the Plaza</button>'+
     '<label style="display:flex;gap:6px;align-items:center;font-size:14px;cursor:pointer;"><input type="checkbox" id="htmFollow" checked> Follow camera</label>'+
+    '<label style="display:flex;gap:6px;align-items:center;font-size:14px;cursor:pointer;"><input type="checkbox" id="htmOverlays"> Analysis overlays (sight lines &amp; camera markers)</label>'+
     '<span id="htmClock" style="margin-left:auto;font-weight:800;color:#00E5FF;font-size:15px;"></span>'+
     '</div>'+
     '<input id="htmScrub" type="range" min="0" max="1000" value="0" style="width:100%;margin:10px 0 4px;accent-color:#D4AF37;">'+
@@ -753,13 +754,13 @@ function initViewer(){
         '<b style="color:#00E5FF;">'+DAY+' \u2014 '+s.time+'</b> &nbsp;<b>'+s.title+'</b>'+
         '<div style="color:#B5BACC;font-size:13.5px;">'+s.text+'</div></div>';
   });
-  sh+='<div style="padding:8px;border-top:1px solid #232838;color:#8b93a8;font-size:12.5px;">Building faces: the Book Depository and the Old Red Courthouse\u2019s north face wear the buildings\u2019 real photographs, perspective-corrected onto the model \u2014 Depository south elevation and courthouse north elevation \u00A9 Carol M. Highsmith, Library of Congress (public domain); Depository east elevation \u00A9 Dakota L., CC BY-SA 4.0 \u2014 all via Wikimedia Commons. The Dal-Tex Building, the County Records Building and the courthouse\u2019s west face wear drawn textures matched to the real buildings\u2019 window grids and materials.</div>';
+  sh+='<div style="padding:8px;border-top:1px solid #232838;color:#8b93a8;font-size:12.5px;">Building faces: the Book Depository and the Old Red Courthouse\u2019s north face wear the buildings\u2019 real photographs, perspective-corrected onto the model \u2014 Depository south elevation and courthouse north elevation \u00A9 Carol M. Highsmith, Library of Congress (public domain); Depository east elevation \u00A9 Dakota L., CC BY-SA 4.0 \u2014 all via Wikimedia Commons. The Dal-Tex Building, the County Records Building and the courthouse\u2019s west face wear drawn textures matched to the real buildings\u2019 window grids and materials. Crosswalk stripes at Elm \u00d7 Houston are period-standard markings added as inferred detail \u2014 the 1963 survey plat (CE 585) draws none. Pale curb ribbons on Houston Street south of Elm mark the model\u2019s probed road and sidewalk edges \u2014 inferred presentation detail, placed only where the probed edges are straight.</div>';
   stepsBox.innerHTML=sh;
   ui.parentElement.appendChild(stepsBox);
 
   var playBtn=ui.querySelector('#htmPlay'),scrub=ui.querySelector('#htmScrub'),
       caption=ui.querySelector('#htmCaption'),clockEl=ui.querySelector('#htmClock'),
-      followChk=ui.querySelector('#htmFollow'),walkBtn=ui.querySelector('#htmWalk'),
+      followChk=ui.querySelector('#htmFollow'),overlaysChk=ui.querySelector('#htmOverlays'),walkBtn=ui.querySelector('#htmWalk'),
       walkHelp=ui.querySelector('#htmWalkHelp');
 
   var ray=new THREE.Raycaster(),DOWN=V3(0,-1,0);
@@ -774,6 +775,8 @@ function initViewer(){
   }
 
   var curve=null,pathPts=[],stepU=[],homeU=0.62,limoGroup=null,limoC0=null,head0=0;
+  var overlayMeshes=[];
+  overlaysChk.addEventListener('change',function(){overlayMeshes.forEach(function(m){m.visible=overlaysChk.checked;});});
   var playing=false,uCur=0,walkMode=false,lastT=0;
   var TOTAL=85000; // ms for the full run at 1x
   function speedAt(u){
@@ -818,6 +821,19 @@ function initViewer(){
       if(o.isMesh){o.castShadow=true;o.receiveShadow=true;
         var ms=Array.isArray(o.material)?o.material:[o.material];
         ms.forEach(function(m){if(m&&m.isMeshStandardMaterial)m.envMapIntensity=0.55;});}
+    });
+    /* v1.13: the analysis layer (sight lines, camera markers, frame
+       markers) is hidden by default so the plaza reads as the real
+       place, not a diagram; the "Analysis overlays" checkbox in the
+       transport panel brings it back. Matched by material name,
+       with node names as a fallback. */
+    gltf.scene.traverse(function(o){
+      if(!o.isMesh)return;
+      var ms=Array.isArray(o.material)?o.material:[o.material];
+      var hit=ms.some(function(m){return m&&(m.name==='SightLine'||m.name==='CameraMarker'||m.name==='FrameMarker');});
+      var nm=o.name||'';
+      if(!hit&&(nm.indexOf('SightLine')>=0||nm.indexOf('CameraMarker')>=0||nm.indexOf('FrameMarker')>=0))hit=true;
+      if(hit){o.visible=false;overlayMeshes.push(o);}
     });
     var disc=new THREE.Mesh(new THREE.CircleGeometry(3200,48),new THREE.MeshStandardMaterial({color:0x8f8b74,roughness:1}));
     disc.rotation.x=-Math.PI/2;disc.position.set(-200,392,0);disc.receiveShadow=true;scene.add(disc);
@@ -872,7 +888,16 @@ function initViewer(){
     limoGroup=new THREE.Group();limoGroup.position.copy(limoC0);scene.add(limoGroup);
     parts.forEach(function(p){
       var pc=new THREE.Box3().setFromObject(p).getCenter(new THREE.Vector3());
-      p.geometry=p.geometry.clone();p.geometry.translate(-pc.x,-pc.y,-pc.z);
+      /* v1.08 fix: a Limo_* part is not always a Mesh. Multi-primitive
+         nodes (the v1.06 grille, headlights and taillights) load as
+         THREE.Groups with no .geometry of their own, and reading
+         p.geometry.clone() on one threw and killed the whole load
+         callback - route, people and transport controls never armed.
+         Recenter every mesh in the part's subtree instead; for a plain
+         Mesh part this does exactly what the old line did. */
+      p.traverse(function(m){
+        if(m.isMesh&&m.geometry){m.geometry=m.geometry.clone();m.geometry.translate(-pc.x,-pc.y,-pc.z);}
+      });
       p.position.copy(pc).sub(limoC0);
       limoGroup.add(p);
     });
@@ -915,43 +940,92 @@ function initViewer(){
       dash.rotation.y=Math.atan2(dt2.x,dt2.z);
       dash.receiveShadow=true;scene.add(dash);
     }
+    /* v1.09 street furniture: crosswalk stripes at Elm x Houston.
+       Geometry probed from the ORIGINAL GLB (exports/dealey-plaza-model.glb):
+       Elm centreline stations (-8.5,5.51)->(8.24,-3.5) give the Elm tangent;
+       Houston stations (7.56,-2.2)->(25.05,67.7) give the Houston tangent.
+       Bands sit 1 ft outside each road edge (Elm half-width 22 ft, Houston
+       26 ft - the interim widths in provenance.csv, tag Unknown), bars are
+       continental-style: 9.5 ft long parallel to traffic, 2 ft wide on a
+       4 ft pitch across the crossed road. CE 585 draws no crosswalk
+       markings, so the pattern is period-standard practice - Inferred,
+       logged in provenance.csv (crosswalks_elm_x_houston). Bars ride at
+       groundY+0.17 so they clear the route dashes (top at +0.135). */
+    (function(){
+      var eE={x:0.8806,z:-0.4740},pE={x:0.4740,z:0.8806};
+      var hH={x:0.2423,z:0.9702},pH={x:0.9702,z:-0.2423};
+      var dEP=pE.x*pH.x+pE.z*pH.z, dEH=eE.x*pH.x+eE.z*pH.z, dHE=hH.x*pE.x+hH.z*pE.z;
+      var cwMat=new THREE.MeshStandardMaterial({color:0xdfd9c8,roughness:0.92,polygonOffset:true,polygonOffsetFactor:-2});
+      function bar(cx,cz,dir){
+        var b=new THREE.Mesh(new THREE.BoxGeometry(2,0.07,9.5),cwMat);
+        b.position.set(cx,groundY(cx,cz)+0.17,cz);
+        b.rotation.y=Math.atan2(dir.x,dir.z);
+        b.receiveShadow=true;scene.add(b);
+      }
+      var off,i,u,v,px,pz,sideE,sideH;
+      /* crossing Elm, west and east of Houston: band centre 32 ft from the
+         Houston centreline (26 edge + 1 gap + 5 half-band) */
+      for(sideE=-1;sideE<=1;sideE+=2){
+        for(i=0;i<11;i++){ off=-20+i*4; v=off; u=(sideE*32-v*dEP)/dEH; px=u*eE.x+v*pE.x; pz=u*eE.z+v*pE.z; bar(px,pz,eE); }
+      }
+      /* crossing Houston, north and south of Elm: band centre 28 ft from
+         the Elm centreline (22 edge + 1 gap + 5 half-band) */
+      for(sideH=-1;sideH<=1;sideH+=2){
+        for(i=0;i<13;i++){ off=-24+i*4; v=off; u=(sideH*28-v*dEP)/dHE; px=u*hH.x+v*pH.x; pz=u*hH.z+v*pH.z; bar(px,pz,hH); }
+      }
+    })();
+    /* v1.10 street furniture (2 of 2): curb / sidewalk tonal separation,
+       Houston St SOUTH of Elm only - the one stretch where overlays are
+       safe. Geometry probed from the ORIGINAL GLB
+       (exports/dealey-plaza-model.glb, probe_local.mjs, R=160-260):
+       Houston is a perfect straight south of Elm - road edges at Houston-
+       perp vh=-18.1 and vh=+33.9 (centre +7.9) constant for along-Houston
+       uh=+25..+175; the east sidewalk (in Sidewalk_Hou_W) has inner edge
+       vh=+36.4, leaving a 2.5 ft curb/gutter gap east; west of the road is
+       plaza grass (no sidewalk mesh exists there). Elm's own edges are NOT
+       used: Elm bends at Houston, so its tangent drifts off the probed
+       edges beyond ~40 ft - Elm curbs stay undone rather than wrong.
+       East ribbon: centre vh=+35.15 = the gap midpoint, 2.0 ft wide
+       (footprint vh +34.15..+36.15, clear of both edges). West ribbon:
+       centre vh=-19.30, footprint -20.30..-18.30, just off the road edge
+       on the plaza verge. Tiles start at uh=+46 (east) / +48 (west): a
+       tile's Elm-perp footprint is centre v +/-2.28, and at those starts
+       v-min is +50.9 / +39.4 - clear of the Elm S sidewalk (south edge
+       v~+37, its Houston-strip verts reach uh +41.5 at most) and of the
+       v1.09 south crosswalk band (v +23.15..+32.85). Tiles end at
+       uh=+120, well north of the Main St crossing (probed uh +248..+274).
+       4.2 ft tiles on a 4 ft pitch, each groundY'd so the ribbon follows
+       the grade; ride at groundY+0.13 (below the crosswalk bars' top).
+       The curb line itself is period infrastructure, Inferred as a
+       presentation overlay; logged in provenance.csv
+       (curb_houston_south). */
+    (function(){
+      var hH={x:0.2423,z:0.9702},pH={x:0.9702,z:-0.2423};
+      var curbMat=new THREE.MeshStandardMaterial({color:0xc7c2ae,roughness:0.95,polygonOffset:true,polygonOffsetFactor:-2});
+      function tile(uh,vh){
+        var px=uh*hH.x+vh*pH.x, pz=uh*hH.z+vh*pH.z;
+        var b=new THREE.Mesh(new THREE.BoxGeometry(2,0.06,4.2),curbMat);
+        b.position.set(px,groundY(px,pz)+0.13,pz);
+        b.rotation.y=Math.atan2(hH.x,hH.z);
+        b.receiveShadow=true;scene.add(b);
+      }
+      var uh;
+      for(uh=46;uh<=120;uh+=4) tile(uh,35.15);
+      for(uh=48;uh<=118;uh+=4) tile(uh,-19.30);
+    })();
     stepU=STEPS.map(function(s){return nearestU(s.xz[0],s.xz[1]);});
     homeU=stepU[4];
 
-    /* ---- the people of Dealey Plaza, at their documented places ---- */
-    function stand(x,z,label,suit,opts){
-      opts=opts||{};
-      var fig=makeFigure({suit:suit,hat:opts.hat,umbrella:opts.umbrella,label:label,small:opts.small});
-      var y=(opts.y!==undefined)?opts.y:groundY(x,z);
-      fig.position.set(x,y,z);
-      fig.rotation.y=opts.face||0;
-      scene.add(fig);return fig;
-    }
-    stand(-280,118,'Abraham Zapruder',0x4a4f5e,{hat:0x2e2a26});
-    stand(-276.2,123.5,'Marilyn Sitzman',0x8c3038);
-    stand(-178,226,'Mary Moorman',0x35507a,{hat:0x22242c});
-    stand(-138,188,'The "Babushka Lady"',0x9a7b4f);
-    stand(-166,166,'"Umbrella Man"',0x1f2126,{umbrella:true});
-    stand(-152,238,'Charles Brehm',0x5a5148);
-    stand(-149.5,241,'',0x707a8c,{small:true});
-    stand(-213,192,'Bill Newman',0x3d4b63);
-    stand(-209,196.5,'Gayle Newman',0x74584e);
-    stand(-206.5,193,'',0x8892a2,{small:true});
-    stand(-216.5,197,'',0x98a2b2,{small:true});
-    stand(18,-28,'Howard Brennan',0x6b5a43,{hat:0x3a332a});
-    var osw=makeFigure({suit:0x2c2c30,label:'Sixth floor \u2014 L. H. Oswald*'});
-    osw.position.set(-66.2,490.2,-12.1);osw.rotation.y=2.6;scene.add(osw);
-    /* crowds along both curbs of Elm */
-    var crowdCols=[0x707880,0x8a6f55,0x4c5a6e,0x7a4a42,0x5d6650,0x989aa2,0x64503e,0x3e4a5a];
-    for(var k=0;k<14;k++){
-      var uu=0.30+k*0.024,p=curve.getPointAt(uu),t=curve.getTangentAt(uu);
-      var side=(k%2===0)?1:-1,off=15+(k%3)*3;
-      var nx=t.z*side,nz=-t.x*side;
-      stand(p.x+nx*off,p.z+nz*off,'',crowdCols[k%crowdCols.length],{face:Math.atan2(-nx,-nz)});
-    }
+    /* ---- the people of Dealey Plaza ----
+       v1.07: the witnesses and the crowd now live IN the model itself
+       (People_* objects inside model.gltf, built from this same witness
+       map), so the viewer no longer spawns its own copies - that would
+       double every figure. The six limousine riders above are still
+       viewer-spawned on purpose: they ride the rigged limo group.
+       See work-v107/viewer_patch_note.md before deploying. */
 
     uCur=homeU;setPose(uCur);
-    caption.innerHTML='<b style="color:#D4AF37;">'+DAY+'</b> &middot; The limousine waits at frame 313, with the people of the plaza in place. Press <b>Play the Event</b> to run the full motorcade from Houston Street to Parkland, or pick any step below. <span style="color:#B5BACC;">*Placements follow the Warren Commission account; the Kennedy page weighs the disputes.</span>';
+    caption.innerHTML='<b style="color:#D4AF37;">'+DAY+'</b> &middot; The limousine waits at frame 313, with the people of the plaza in place. Press <b>Play the Event</b> to run the full motorcade from Houston Street to Parkland, or pick any step below. <span style="color:#B5BACC;">Placements follow the Warren Commission account; the Kennedy page weighs the disputes.</span>';
     clockEl.textContent='12:30 PM CST';
   },function(xhr){if(xhr.total)msg.textContent='Loading the Dealey Plaza model\u2026 '+Math.round(xhr.loaded/xhr.total*100)+'%';},
   function(){msg.textContent='The model file could not be loaded. Please reload the page to try again.';});
