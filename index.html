@@ -536,7 +536,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.02</span>
+      <span>v1.03</span>
     </div>
   </div>
 </footer>
@@ -753,7 +753,7 @@ function initViewer(){
         '<b style="color:#00E5FF;">'+DAY+' \u2014 '+s.time+'</b> &nbsp;<b>'+s.title+'</b>'+
         '<div style="color:#B5BACC;font-size:13.5px;">'+s.text+'</div></div>';
   });
-  sh+='<div style="padding:8px;border-top:1px solid #232838;color:#8b93a8;font-size:12.5px;">Book Depository facades are the building\u2019s real photographs, perspective-corrected onto the model: south elevation \u00A9 Carol M. Highsmith, Library of Congress (public domain); east elevation \u00A9 Dakota L., CC BY-SA 4.0, via Wikimedia Commons.</div>';
+  sh+='<div style="padding:8px;border-top:1px solid #232838;color:#8b93a8;font-size:12.5px;">Building faces: the Book Depository and the Old Red Courthouse\u2019s north face wear the buildings\u2019 real photographs, perspective-corrected onto the model \u2014 Depository south elevation and courthouse north elevation \u00A9 Carol M. Highsmith, Library of Congress (public domain); Depository east elevation \u00A9 Dakota L., CC BY-SA 4.0 \u2014 all via Wikimedia Commons. The Dal-Tex Building, the County Records Building and the courthouse\u2019s west face wear drawn textures matched to the real buildings\u2019 window grids and materials.</div>';
   stepsBox.innerHTML=sh;
   ui.parentElement.appendChild(stepsBox);
 
@@ -831,6 +831,26 @@ function initViewer(){
     }
     facade('facade-south.jpg',100,80.2,[-107,473.6,-12.8],0);
     facade('facade-east.jpg',100,80.2,[-55.8,473.6,-64],Math.PI/2);
+    /* v1.03: the other plaza buildings get faces too (photo where a clean elevation exists, drawn textures matched to the real window grids elsewhere) */
+    facade('facade-daltex.jpg',121.7,66,[-4,467,-122.35],-Math.PI/2);
+    facade('facade-daltex.jpg',120.9,66,[56.85,467,-61.1],0);
+    facade('facade-records-west.jpg',209.7,100,[161.4,484.19,71.35],-Math.PI/2);
+    facade('facade-records-north.jpg',127.7,100,[225.65,484.19,-33.9],Math.PI);
+    facade('facade-courthouse-west.jpg',161.4,90,[135.6,480.74,330.2],-Math.PI/2);
+    facade('facade-courthouse-north.jpg',208.8,90,[240.4,480.74,249.1],Math.PI);
+    /* HERTZ lettering on the Depository roof sign (the panel is in the model; the letters were not) */
+    (function(){
+      var cv=document.createElement('canvas');cv.width=1408;cv.height=416;
+      var cx=cv.getContext('2d');
+      cx.font='900 300px "Arial Black", Arial, sans-serif';
+      cx.textAlign='center';cx.textBaseline='middle';cx.fillStyle='#20211f';
+      var tw=cx.measureText('HERTZ').width;
+      var scx=Math.min(1.35,(1408*0.92)/Math.max(tw,1));
+      cx.save();cx.translate(704,212);cx.scale(scx,1);cx.fillText('HERTZ',0,0);cx.restore();
+      var tx=new THREE.CanvasTexture(cv);tx.encoding=THREE.sRGBEncoding;tx.anisotropy=8;
+      var m=new THREE.Mesh(new THREE.PlaneGeometry(22,6.5),new THREE.MeshStandardMaterial({map:tx,transparent:true,alphaTest:0.08,roughness:0.85,metalness:0,polygonOffset:true,polygonOffsetFactor:-1}));
+      m.position.set(-112.29,520.7,-65.66);m.rotation.y=-0.7;scene.add(m);
+    })();
     var box=new THREE.Box3().setFromObject(gltf.scene);
     var c=box.getCenter(new THREE.Vector3()),s=box.getSize(new THREE.Vector3());
     var r=Math.max(s.x,s.z);
