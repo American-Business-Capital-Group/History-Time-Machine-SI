@@ -536,7 +536,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.01</span>
+      <span>v1.02</span>
     </div>
   </div>
 </footer>
@@ -625,13 +625,44 @@ function initViewer(){
   var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   renderer.outputEncoding=THREE.sRGBEncoding;
-  var scene=new THREE.Scene();scene.background=new THREE.Color(0x9fc3e0);
-  scene.fog=new THREE.Fog(0x9fc3e0,1100,2800);
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.07;
+  var scene=new THREE.Scene();
+  scene.fog=new THREE.Fog(0xd7e3ee,1500,4200);
+  var skyDome=new THREE.Mesh(new THREE.SphereGeometry(3600,24,12),new THREE.ShaderMaterial({
+    side:THREE.BackSide,depthWrite:false,
+    vertexShader:'varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader:'varying vec3 vP;void main(){float h=normalize(vP).y;vec3 top=vec3(0.26,0.47,0.72);vec3 mid=vec3(0.58,0.72,0.86);vec3 bot=vec3(0.82,0.86,0.88);vec3 c=h>0.12?mix(mid,top,smoothstep(0.12,0.65,h)):mix(bot,mid,smoothstep(-0.08,0.12,h));gl_FragColor=vec4(c,1.0);}'
+  }));
+  scene.add(skyDome);
   var camera=new THREE.PerspectiveCamera(50,2,0.1,5000);
   var controls=new THREE.OrbitControls(camera,canvas);
+  controls.maxDistance=2400;controls.minDistance=6;
   controls.enableDamping=true;controls.dampingFactor=0.08;controls.maxPolarAngle=Math.PI*0.495;
-  var amb=new THREE.AmbientLight(0xffffff,0.55);scene.add(amb);
-  var sun=new THREE.DirectionalLight(0xfff2d8,1.15);sun.position.set(180,260,120);scene.add(sun);
+  var amb=new THREE.AmbientLight(0xffffff,0.22);scene.add(amb);
+  var hemi=new THREE.HemisphereLight(0xbfd8ee,0x77694f,0.5);scene.add(hemi);
+  var sun=new THREE.DirectionalLight(0xfff0d4,1.5);
+  sun.position.set(150,1300,1250);
+  sun.target.position.set(-150,430,60);scene.add(sun.target);
+  sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);
+  sun.shadow.camera.left=-780;sun.shadow.camera.right=780;
+  sun.shadow.camera.top=780;sun.shadow.camera.bottom=-780;
+  sun.shadow.camera.near=50;sun.shadow.camera.far=3400;
+  sun.shadow.bias=-0.0004;sun.shadow.normalBias=2.2;
+  sun.shadow.camera.updateProjectionMatrix();
+  scene.add(sun);
+  var pmrem=new THREE.PMREMGenerator(renderer);
+  var envScene=new THREE.Scene();
+  var esky=new THREE.Mesh(new THREE.SphereGeometry(60,16,12),new THREE.MeshBasicMaterial({side:THREE.BackSide,color:0x87aacd}));
+  esky.position.y=10;envScene.add(esky);
+  var egnd=new THREE.Mesh(new THREE.CircleGeometry(58,24),new THREE.MeshBasicMaterial({color:0x6f6a58}));
+  egnd.rotation.x=-Math.PI/2;egnd.position.y=-5;envScene.add(egnd);
+  var esun=new THREE.Mesh(new THREE.SphereGeometry(7,12,8),new THREE.MeshBasicMaterial({color:0xfff3da}));
+  esun.position.set(14,26,34);envScene.add(esun);
+  scene.environment=pmrem.fromScene(envScene,0.05).texture;
   function frame(pos,tgt){camera.position.set(pos[0],pos[1],pos[2]);controls.target.set(tgt[0],tgt[1],tgt[2]);controls.update();}
   var V3=function(x,y,z){return new THREE.Vector3(x,y,z);};
 
@@ -665,12 +696,15 @@ function initViewer(){
       var legs=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.9,0.62),dark);legs.position.y=0.95;g.add(legs);
       var torso2=new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.72,2.1,10),suit);torso2.position.y=2.95;g.add(torso2);
       var head2=new THREE.Mesh(new THREE.SphereGeometry(0.54,14,12),skin);head2.position.y=4.5;g.add(head2);
+      var armL=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.14,1.8,8),suit);armL.position.set(-0.82,2.85,0);armL.rotation.z=0.16;g.add(armL);
+      var armR=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.14,1.8,8),suit);armR.position.set(0.82,2.85,0);armR.rotation.z=-0.16;g.add(armR);
       if(o.hat!==undefined){var hat2=new THREE.Mesh(new THREE.CylinderGeometry(0.58,0.6,0.3,14),new THREE.MeshLambertMaterial({color:o.hat}));hat2.position.y=4.95;g.add(hat2);}
       if(o.umbrella){
         var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,3.4,6),dark);pole.position.set(0.9,5.2,0);g.add(pole);
         var can=new THREE.Mesh(new THREE.ConeGeometry(2.3,0.7,14),new THREE.MeshLambertMaterial({color:0x111114}));can.position.set(0.9,6.9,0);g.add(can);
       }
     }
+    g.traverse(function(m){if(m.isMesh)m.castShadow=true;});
     if(o.label){var lb=makeLabel(o.label);lb.position.y=H+1.6;g.add(lb);}
     return g;
   }
@@ -719,6 +753,7 @@ function initViewer(){
         '<b style="color:#00E5FF;">'+DAY+' \u2014 '+s.time+'</b> &nbsp;<b>'+s.title+'</b>'+
         '<div style="color:#B5BACC;font-size:13.5px;">'+s.text+'</div></div>';
   });
+  sh+='<div style="padding:8px;border-top:1px solid #232838;color:#8b93a8;font-size:12.5px;">Book Depository facades are the building\u2019s real photographs, perspective-corrected onto the model: south elevation \u00A9 Carol M. Highsmith, Library of Congress (public domain); east elevation \u00A9 Dakota L., CC BY-SA 4.0, via Wikimedia Commons.</div>';
   stepsBox.innerHTML=sh;
   ui.parentElement.appendChild(stepsBox);
 
@@ -779,6 +814,23 @@ function initViewer(){
 
   new THREE.GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load('model.gltf',function(gltf){
     modelRoot=gltf.scene;scene.add(gltf.scene);
+    gltf.scene.traverse(function(o){
+      if(o.isMesh){o.castShadow=true;o.receiveShadow=true;
+        var ms=Array.isArray(o.material)?o.material:[o.material];
+        ms.forEach(function(m){if(m&&m.isMeshStandardMaterial)m.envMapIntensity=0.55;});}
+    });
+    var disc=new THREE.Mesh(new THREE.CircleGeometry(3200,48),new THREE.MeshStandardMaterial({color:0x8f8b74,roughness:1}));
+    disc.rotation.x=-Math.PI/2;disc.position.set(-200,392,0);disc.receiveShadow=true;scene.add(disc);
+    /* real-life photo facades of the Book Depository, perspective-corrected onto the model */
+    function facade(texFile,w,h,pos,rotY){
+      new THREE.TextureLoader().load(texFile,function(tx){
+        tx.encoding=THREE.sRGBEncoding;tx.anisotropy=8;
+        var m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshStandardMaterial({map:tx,roughness:0.94,metalness:0}));
+        m.position.set(pos[0],pos[1],pos[2]);m.rotation.y=rotY;m.receiveShadow=true;scene.add(m);
+      });
+    }
+    facade('facade-south.jpg',100,80.2,[-107,473.6,-12.8],0);
+    facade('facade-east.jpg',100,80.2,[-55.8,473.6,-64],Math.PI/2);
     var box=new THREE.Box3().setFromObject(gltf.scene);
     var c=box.getCenter(new THREE.Vector3()),s=box.getSize(new THREE.Vector3());
     var r=Math.max(s.x,s.z);
@@ -830,6 +882,19 @@ function initViewer(){
     for(var i=0;i<wp.length;i++){var sp=tmpCurve.getPoint(i/(wp.length-1));pts3[i].y=groundY(sp.x,sp.z)+lift;}
     curve=new THREE.CatmullRomCurve3(pts3,false,'centripetal',0.5);
     pathPts=curve.getSpacedPoints(600);
+    /* dashed center-line markings along the motorcade route */
+    var dashMat=new THREE.MeshStandardMaterial({color:0xe9e1c6,roughness:0.9});
+    var dashEnd=nearestU(-245,242)+0.03;
+    for(var di=0;di<pathPts.length-2;di++){
+      var du=di/(pathPts.length-1);
+      if(du<0.015||du>dashEnd)continue;
+      if(di%10!==0)continue;
+      var dp=pathPts[di],dt2=pathPts[di+1].clone().sub(pathPts[di-1]);
+      var dash=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.07,11),dashMat);
+      dash.position.set(dp.x,groundY(dp.x,dp.z)+0.1,dp.z);
+      dash.rotation.y=Math.atan2(dt2.x,dt2.z);
+      dash.receiveShadow=true;scene.add(dash);
+    }
     stepU=STEPS.map(function(s){return nearestU(s.xz[0],s.xz[1]);});
     homeU=stepU[4];
 
@@ -855,7 +920,7 @@ function initViewer(){
     stand(-216.5,197,'',0x98a2b2,{small:true});
     stand(18,-28,'Howard Brennan',0x6b5a43,{hat:0x3a332a});
     var osw=makeFigure({suit:0x2c2c30,label:'Sixth floor \u2014 L. H. Oswald*'});
-    osw.position.set(-66.2,490.2,-13.4);osw.rotation.y=2.6;scene.add(osw);
+    osw.position.set(-66.2,490.2,-12.1);osw.rotation.y=2.6;scene.add(osw);
     /* crowds along both curbs of Elm */
     var crowdCols=[0x707880,0x8a6f55,0x4c5a6e,0x7a4a42,0x5d6650,0x989aa2,0x64503e,0x3e4a5a];
     for(var k=0;k<14;k++){
