@@ -537,7 +537,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.23</span>
+      <span>v1.24</span>
     </div>
   </div>
 </footer>
@@ -907,6 +907,18 @@ function initViewer(){
     modelRoot=gltf.scene;scene.add(gltf.scene);
     gltf.scene.traverse(function(o){
       if(o.isMesh){o.castShadow=true;o.receiveShadow=true;
+        /* v1.24 fix: COLOR_0 in the deployed glTF is a normalized-UBYTE
+           accessor, but the r128 loader's meshopt path hands it to the
+           shader as raw 0-255 values, so every vertex-colored surface
+           (terrain, tree canopies) renders multiplied by up to 255 and
+           blows out to white - the plaza was there all along, just
+           overexposed 255x. Rescale byte color attributes to 0-1. */
+        var ca=o.geometry&&o.geometry.attributes&&o.geometry.attributes.color;
+        if(ca&&(ca.array instanceof Uint8Array||ca.array instanceof Uint8ClampedArray)){
+          var cf=new Float32Array(ca.array.length);
+          for(var ci=0;ci<ca.array.length;ci++)cf[ci]=ca.array[ci]/255;
+          o.geometry.setAttribute('color',new THREE.BufferAttribute(cf,ca.itemSize));
+        }
         var ms=Array.isArray(o.material)?o.material:[o.material];
         ms.forEach(function(m){if(m&&m.isMeshStandardMaterial)m.envMapIntensity=0.55;});}
     });
