@@ -537,7 +537,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.25</span>
+      <span>v1.26</span>
     </div>
   </div>
 </footer>
@@ -842,14 +842,50 @@ function initViewer(){
       followChk=ui.querySelector('#htmFollow'),overlaysChk=ui.querySelector('#htmOverlays'),walkBtn=ui.querySelector('#htmWalk'),
       walkHelp=ui.querySelector('#htmWalkHelp');
 
-  var ray=new THREE.Raycaster(),DOWN=V3(0,-1,0);
-  var modelRoot=null,groundCache={};
+  var modelRoot=null,groundCache={},groundGrid=null;
+  /* v1.26 fix: groundY used to raycast down through the model, but
+     three r128's raycaster silently misses this scene's big meshes
+     (a downward ray over open grass returns zero hits) and reports
+     phantom points thousands of feet underground for small ones
+     (sight lines near y=-5262), so the motorcade route's heights
+     were garbage - the limousine drove underground and every
+     moving camera (follow, walk) went black or chased a car that
+     was not there. Sample the terrain mesh's own vertices into a
+     4 ft grid instead: deterministic, and it is the surface the
+     eye actually sees. */
+  function buildGroundGrid(root){
+    var terr=null;
+    root.traverse(function(o){if(!terr&&o.isMesh&&o.name&&o.name.indexOf('Terrain')>=0)terr=o;});
+    if(!terr)return;
+    root.updateMatrixWorld(true);
+    var pos=terr.geometry.attributes.position,v=new THREE.Vector3(),grid={};
+    /* positions may be KHR_mesh_quantization Int16 normalized values:
+       r128's attribute getters return the raw ints, so denormalize
+       by hand before applying the node's (x1000) matrix. */
+    var nrm=0;
+    if(pos.normalized)nrm=(pos.array instanceof Int8Array)?127:(pos.array instanceof Uint8Array)?255:(pos.array instanceof Int16Array)?32767:65535;
+    for(var i=0;i<pos.count;i++){
+      v.fromBufferAttribute(pos,i);
+      if(nrm)v.multiplyScalar(1/nrm);
+      v.applyMatrix4(terr.matrixWorld);
+      var k=Math.round(v.x/4)+','+Math.round(v.z/4);
+      if(grid[k]===undefined||v.y>grid[k])grid[k]=v.y;
+    }
+    groundGrid=grid;
+  }
   function groundY(x,z){
-    var key=Math.round(x/4)+','+Math.round(z/4);
+    var gx=Math.round(x/4),gz=Math.round(z/4),key=gx+','+gz;
     if(groundCache[key]!==undefined)return groundCache[key];
-    ray.set(V3(x,580,z),DOWN);
-    var hits=ray.intersectObject(modelRoot,true);
-    var y=hits.length?hits[0].point.y:421.7;
+    var y=421.7;
+    if(groundGrid){
+      if(groundGrid[key]!==undefined)y=groundGrid[key];
+      else for(var r=1;r<=2&&y===421.7;r++){
+        for(var dx=-r;dx<=r;dx++)for(var dz=-r;dz<=r;dz++){
+          var nk=(gx+dx)+','+(gz+dz);
+          if(groundGrid[nk]!==undefined){y=groundGrid[nk];dx=r+1;break;}
+        }
+      }
+    }
     groundCache[key]=y;return y;
   }
 
@@ -910,6 +946,7 @@ function initViewer(){
 
   new THREE.GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load('model.gltf',function(gltf){
     modelRoot=gltf.scene;scene.add(gltf.scene);
+    buildGroundGrid(gltf.scene);
     gltf.scene.traverse(function(o){
       if(o.isMesh){o.castShadow=true;o.receiveShadow=true;
         /* v1.24 fix: COLOR_0 in the deployed glTF is a normalized-UBYTE
