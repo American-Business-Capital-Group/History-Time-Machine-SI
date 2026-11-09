@@ -537,7 +537,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.22</span>
+      <span>v1.23</span>
     </div>
   </div>
 </footer>
@@ -682,6 +682,12 @@ function initViewer(){
      viewer simply keeps the original direct render. */
   var lookU=null,setGrain=function(){};
   try{
+    /* v1.23 bisect: the v1.15 look pass (render-to-target + grade quad)
+       shipped in v1.14's cumulative deploy without a visual gate and the
+       live render is washed out in every camera. Disabled until the pass
+       is repaired and verified; the catch below leaves the viewer on the
+       original direct render, exactly the built-in fallback path. */
+    throw new Error('v1.23: look pass disabled for visual bisection');
     var lookRT=new THREE.WebGLRenderTarget(2,2,{depthBuffer:true,samples:4});
     lookRT.texture.encoding=THREE.sRGBEncoding;
     lookRT.texture.minFilter=THREE.LinearFilter;
