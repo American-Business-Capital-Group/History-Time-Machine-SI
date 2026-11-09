@@ -537,7 +537,7 @@ ul.ticks li::before{content:"";position:absolute;left:0;top:8px;width:11px;heigh
     </div>
     <div class="legal">
       <span>Artificial Intelligence Designed Exclusively by the American Business Capital Group, Inc. © 2026 All Rights Reserved</span>
-      <span>v1.18</span>
+      <span>v1.22</span>
     </div>
   </div>
 </footer>
@@ -785,7 +785,7 @@ function initViewer(){
   /* ---------- route steps (every step carries its date and time) ---------- */
   var DAY='Friday, November 22, 1963';
   var STEPS=[
-    {xz:[30,-300], time:'12:29 PM CST', title:'Onto Houston Street',
+    {xz:[-80,-300], time:'12:29 PM CST', title:'Onto Houston Street',
      text:'The motorcade turns off Main Street onto Houston, beginning the final leg through Dealey Plaza toward the Trade Mart luncheon.'},
     {xz:[2,2], time:'12:29 PM CST', title:'The Left onto Elm',
      text:'A sharp left onto Elm Street, directly in front of the Texas School Book Depository at 411 Elm.'},
@@ -878,7 +878,16 @@ function initViewer(){
     if(!curve||!limoGroup)return;
     var p=curve.getPointAt(u),t=curve.getTangentAt(u);
     limoGroup.position.set(p.x,p.y,p.z);
-    limoGroup.rotation.set(0,Math.atan2(t.x,t.z)-head0,0);
+    /* v1.21 fix: the raw curve tangent at the parked (home) pose sits
+       ~13.5 deg off the car's built heading (head0), so the parked limo
+       was skewed. Ease the yaw error to exactly 0 at homeU with a
+       180-ft cosine taper (the film's v1.20 ease); positions untouched. */
+    var rawYaw=Math.atan2(t.x,t.z)-head0;
+    while(rawYaw>Math.PI)rawYaw-=2*Math.PI;
+    while(rawYaw<-Math.PI)rawYaw+=2*Math.PI;
+    var dArc=Math.abs(u-homeU)*curve.getLength();
+    var wYaw=dArc>=180?1:0.5-0.5*Math.cos(Math.PI*dArc/180);
+    limoGroup.rotation.set(0,rawYaw*wYaw,0);
     if(followChk.checked&&playing&&!walkMode){
       var bx=-t.x,bz=-t.z,sx=t.z,sz=-t.x;
       camera.position.lerp(V3(p.x+bx*34+sx*13,p.y+13,p.z+bz*34+sz*13),0.06);
@@ -928,7 +937,15 @@ function initViewer(){
     facade('facade-courthouse-west.jpg',161.4,90,[135.6,480.74,330.2],-Math.PI/2);
     facade('facade-courthouse-north.jpg',208.8,90,[240.4,480.74,249.1],Math.PI);
 
-    var box=new THREE.Box3().setFromObject(gltf.scene);
+    /* v1.22 fix: frame the view presets on the PLAZA bounds. The v1.16
+       skyline ring sits ~3,000-4,900 ft east, and setFromObject over the
+       whole scene let those towers drag the box centre east and inflate
+       its size, so every preset framed empty sky/disc instead of the
+       plaza. Union the bounds of everything except Skyline_* meshes. */
+    var box=new THREE.Box3();
+    gltf.scene.traverse(function(o){
+      if(o.isMesh&&o.name.indexOf('Skyline_')!==0){box.union(new THREE.Box3().setFromObject(o));}
+    });
     var c=box.getCenter(new THREE.Vector3()),s=box.getSize(new THREE.Vector3());
     var r=Math.max(s.x,s.z);
     window.__views={
@@ -986,7 +1003,7 @@ function initViewer(){
     rider([ 6.2, 1.7],'Agent Kellerman',0x3a3f4a);
 
     /* ---- the route ---- */
-    var wp=[[30,-300],[16,-160],[6,-40],[2,2],[-45,38],[-111.7,100.5],[-129.5,121.9],[-147.7,146.1],[-165,175],[-191.4,209.9],[-245,242],[-330,275],[-470,320],[-640,365],[-830,400],[-1005,420]];
+    var wp=[[-80,-300],[-43,-160],[-10,-40],[2,2],[-45,38],[-111.7,100.5],[-129.5,121.9],[-147.7,146.1],[-165,175],[-191.4,209.9],[-245,242],[-330,275],[-470,320],[-640,365],[-830,400],[-1005,420]];
     var pts3=wp.map(function(w){return V3(w[0],0,w[1]);});
     var tmpCurve=new THREE.CatmullRomCurve3(pts3,false,'centripetal',0.5);
     var lift=limoC0.y-groundY(limoC0.x,limoC0.z);
